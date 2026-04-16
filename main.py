@@ -6,9 +6,7 @@ os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 os.environ['MKL_NUM_THREADS'] = '1'
 os.environ['OMP_NUM_THREADS'] = '1'
 
-import tensorflow as tf
-tf.config.threading.set_inter_op_parallelism_threads(1)
-tf.config.threading.set_intra_op_parallelism_threads(1)
+import tflite_runtime.interpreter as tflite
 
 import httpx
 from fastapi import FastAPI, HTTPException, UploadFile, File
@@ -41,15 +39,28 @@ if not WEATHER_API_KEY:
     raise RuntimeError("WEATHER_API_KEY is not set. Please add it to your .env file or Render environment variables.")
 
 # --- LOAD MODELS ---
-model = joblib.load("best_model.pkl")
-scaler = joblib.load("scaler.pkl")
-label_encoder = joblib.load("label_encoder.pkl")
 
-interpreter = tf.lite.Interpreter(model_path="model_optimized.tflite")
-interpreter.allocate_tensors()
+# Lazy loading for TFLite model
+_interpreter = None
+_crop_model = None
+_scaler = None
+_label_encoder = None
 
-input_details = interpreter.get_input_details()
-output_details = interpreter.get_output_details()
+def get_interpreter():
+    global _interpreter
+    if _interpreter is None:
+        _interpreter = tflite.Interpreter(model_path="model_optimized.tflite")
+        _interpreter.allocate_tensors()
+    return _interpreter
+
+
+def get_crop_model():
+    global _crop_model, _scaler, _label_encoder
+    if _crop_model is None:
+        _crop_model = joblib.load("best_model.pkl")
+        _scaler = joblib.load("scaler.pkl")
+        _label_encoder = joblib.load("label_encoder.pkl")
+    return _crop_model, _scaler, _label_encoder
 
 with open("disease_labels.json", "r") as f:
     disease_labels = json.load(f)
@@ -120,6 +131,10 @@ async def save_profile(profile: FarmerProfile):
 # 3. DISEASE PREDICTION ENDPOINT
 @app.post("/predict-disease")
 async def predict_disease(file: UploadFile = File(...)):
+    interp = get_interpreter()
+    input_details = interp.get_input_details()
+    output_details = interp.get_output_details()
+
     try:
         contents = await file.read()
         img = Image.open(io.BytesIO(contents)).convert('RGB')
@@ -127,10 +142,9 @@ async def predict_disease(file: UploadFile = File(...)):
         img_array = np.array(img, dtype=np.float32) / 255.0
         img_array = np.expand_dims(img_array, axis=0)
 
-        interpreter.set_tensor(input_details[0]['index'], img_array)
-        interpreter.invoke()
-
-        prediction = interpreter.get_tensor(output_details[0]['index'])
+        interp.set_tensor(input_details[0]['index'], img_array)
+        interp.invoke()
+        prediction = interp.get_tensor(output_details[0]['index'])
         class_idx = np.argmax(prediction)
         confidence = np.max(prediction)
         disease_name = disease_labels[str(class_idx)]
@@ -158,6 +172,7 @@ async def predict_disease(file: UploadFile = File(...)):
 # 4. CROP RECOMMENDATION ENDPOINT
 @app.post("/predict-crop")
 async def predict_crop(manual: PredictionInput):
+    model, scaler, label_encoder = get_crop_model()
     try:
         current_temp = latest_sensors.temperature if latest_sensors.temperature != 0 else 25.0
         current_hum = latest_sensors.humidity if latest_sensors.humidity != 0 else 50.0
