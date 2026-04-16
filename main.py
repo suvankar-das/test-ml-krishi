@@ -23,7 +23,7 @@ import numpy as np
 import json
 import io
 
-from tensorflow.keras.preprocessing import image
+
 from PIL import Image
 
 # --- LOAD ENVIRONMENT VARIABLES ---
