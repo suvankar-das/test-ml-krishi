@@ -13,6 +13,8 @@ tf.config.threading.set_intra_op_parallelism_threads(1)
 import httpx
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from groq import Groq
 from dotenv import load_dotenv
@@ -53,6 +55,13 @@ with open("disease_labels.json", "r") as f:
     disease_labels = json.load(f)
 
 app = FastAPI()
+
+# Static files serve করার জন্য
+app.mount("/static", StaticFiles(directory="."), name="static")
+
+@app.get("/")
+async def read_index():
+    return FileResponse("index.html")
 
 app.add_middleware(
     CORSMiddleware,
