@@ -1186,7 +1186,11 @@
           tableHtml += `</tbody></table>`;
           document.getElementById("prediction-reasoning").innerHTML = tableHtml;
         } catch (e) {
-          resultBox.innerHTML = "<b>Error:</b> Could not reach AI engine.";
+          // Log it to the browser console for debugging
+          console.error("Prediction Error:", e);
+
+          // Display the actual message in the UI
+          resultBox.innerHTML = `<b>Error:</b> ${e.message}`;
         }
       }
 
