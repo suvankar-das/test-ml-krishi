@@ -10,3 +10,4 @@ joblib
 pandas
 scikit-learn
 pydantic
+python-dotenv
