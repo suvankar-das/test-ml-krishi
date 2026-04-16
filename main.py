@@ -67,7 +67,7 @@ with open("disease_labels.json", "r") as f:
 
 app = FastAPI()
 
-# Static files serve করার জন্য
+# Static files serve 
 app.mount("/static", StaticFiles(directory="."), name="static")
 
 @app.get("/")
